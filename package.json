@@ -1,0 +1,32 @@
+{
+  "name": "ecm",
+  "version": "0.0.1",
+  "description": "Lenstra elliptic-curve factorization method",
+  "main": "ecm.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Yaffle/ecm.git"
+  },
+  "keywords": [
+    "integer",
+    "factorization",
+    "Lenstra",
+    "elliptic",
+    "curve",
+    "method",
+    "ECM"
+  ],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Yaffle/ecm/issues"
+  },
+  "homepage": "https://github.com/Yaffle/ecm#readme",
+  "dependencies": {
+    "bigint-gcd": "^1.0.44"
+  }
+}
