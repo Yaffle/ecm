@@ -22,6 +22,9 @@ function primes(MAX) {
 }
 
 function invmod(a, m) {
+  if (typeof a !== 'bigint' || typeof m !== 'bigint') {
+    throw new TypeError();
+  }
   const [A, B, g] = gcd.gcdext(m, a);
   if (BigInt(g) !== BigInt(1)) {
     return BigInt(0);
@@ -36,7 +39,7 @@ function wAryNonAdjacentFormMultiplicationChain(s, w = 9) {
     // https://en.wikipedia.org/wiki/Elliptic_curve_point_multiplication#w-ary_non-adjacent_form_(wNAF)_method
     const da = [];
     while (d > BigInt(0)) {
-      if ((d & BigInt(1)) !== BigInt(0)) {
+      if (BigInt.asIntN(1, d) !== BigInt(0)) {
         const x = BigInt.asIntN(w, d);
         da.push(Number(x));
         d = d - x;
@@ -126,6 +129,9 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16) {
   const useBarrettReduction = k > 256;//?
 
   const modmul = function (a, b) {
+    if (typeof a !== 'bigint' || typeof b !== 'bigint') {
+      throw new TypeError();
+    }
     modMuls += 1;
     if (useBarrettReduction) {
       const p = a * b;
@@ -141,6 +147,9 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16) {
     return (a * b) % N;
   };
   const modsub = function (a, b) {
+    if (typeof a !== 'bigint' || typeof b !== 'bigint') {
+      throw new TypeError();
+    }
     let y = a - b;
     if (y < BigInt(0)) {
       y += N;
@@ -269,7 +278,7 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16) {
     if (P == null) {
       return null;
     }
-    return {x: P.x, y: P.y.map(e => e === BigInt(0) ? BigInt(0) : N - e)};
+    return {x: P.x, y: P.y.map(e => e === BigInt(0) ? BigInt(0) : N - BigInt(e))};
   };
 
   const scalePoint = function (a, P, s) {
@@ -281,7 +290,7 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16) {
       const P1 = g[e[0]];
       const P2 = e[1] < 0 ? negatePoint(g[-1 - e[1]]) : g[e[1]];
       let P3 = null;
-      if (e[0] === e[1]) { // P1 === P2
+      if (+e[0] === +e[1]) { // P1 === P2
         P3 = doublePoint(a, P1);
       } else {
         P3 = addPoints(a, P1, P2);
@@ -295,6 +304,9 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16) {
   };
 
   const SuyamaParametrization = function (sigma, N) {
+    if (typeof sigma !== 'bigint' || typeof N !== 'bigint') {
+      throw new TypeError();
+    }
     // Suyama’s parametrization - see https://members.loria.fr/PZimmermann/papers/ecm-submitted.pdf  
     //let sigma = BigInt(6) % N;
     const u = (sigma * sigma - BigInt(5)) % N;
@@ -400,6 +412,9 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16) {
         const makeCache = function (P) {
           const cache = [];
           return function (i) {
+            if (typeof i !== 'number') {
+              throw new TypeError();
+            }
             if (cache.length === 0) {
               const Q = doublePoint(curvesArray, P);
               if (Q == null) {
@@ -432,7 +447,7 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16) {
         const cache2 = makeCache(sP);
         const toadd = [];
         for (const p of primes(B2)) {
-          if (p >= B) {
+          if (+p >= +B) {
             // p = i * d + j
             const i = Math.round(p / d);
             const j = p - d * i;
