@@ -2,6 +2,8 @@
 
 Usage:
 
+npm install @yaffle/ecm
+
 ```
 
 import ecm from './ecm.js';

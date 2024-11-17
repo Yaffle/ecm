@@ -1,5 +1,5 @@
 {
-  "name": "ecm",
+  "name": "@yaffle/ecm",
   "version": "0.0.1",
   "description": "Lenstra elliptic-curve factorization method",
   "main": "ecm.js",
@@ -28,5 +28,8 @@
   "homepage": "https://github.com/Yaffle/ecm#readme",
   "dependencies": {
     "bigint-gcd": "^1.0.44"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
