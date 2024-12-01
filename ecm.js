@@ -34,64 +34,6 @@ function invmod(a, m) {
   return inv;
 }
 
-function wAryNonAdjacentFormMultiplicationChain(s, w = 9) {
-  function wNAF(d) {
-    // https://en.wikipedia.org/wiki/Elliptic_curve_point_multiplication#w-ary_non-adjacent_form_(wNAF)_method
-    const da = [];
-    while (d > BigInt(0)) {
-      if (BigInt.asIntN(1, d) !== BigInt(0)) {
-        const x = BigInt.asIntN(w, d);
-        da.push(Number(x));
-        d = d - x;
-      } else {
-        da.push(0);
-      }
-      d = d >> BigInt(1);
-    }
-    return da;
-  }
-  const d = wNAF(s, w);
-  const chain = [];
-  const cache = {};
-  let Q = -1;
-  for (let j = d.length - 1; j >= 0; j -= 1) {
-    if (Q !== -1) {
-      chain.push([Q, Q]);
-      Q = chain.length;
-    }
-    if (d[j] !== 0) {
-      //let x = d[j] * P;
-      let i = Math.abs(d[j]);
-      if (cache[i] == null) {
-        cache[1] = 0;
-        for (let k = 3; k <= i; k += 2) {
-          if (cache[k] == null) {
-            if (cache[2] == null) {
-              chain.push([0, 0]);
-              cache[2] = chain.length;
-            }
-            chain.push([cache[k - 2], cache[2]]);
-            cache[k] = chain.length;
-          }
-        }
-      }
-      const x = cache[i];
-      if (Q === -1) {
-        Q = x;
-      } else {
-        if (d[j] < 0) {
-          chain.push([Q, -1 - x]);
-          Q = chain.length;
-        } else {
-          chain.push([Q, x]);
-          Q = chain.length;
-        }
-      }
-    }
-  }
-  return chain;
-}
-
 function ecm(N, unlimited = false) {
   const factorDigits = unlimited ? 1/0 : (N.toString(2).length * Math.log10(2)) / 4;//TODO: !?
   // https://www.rieselprime.de/ziki/Elliptic_curve_method
@@ -259,26 +201,101 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16) {
     return {x: P.x, y: P.y.map(e => e === BigInt(0) ? BigInt(0) : N - BigInt(e))};
   };
 
+  const wAryNonAdjacentFormMultiplication = function (a, P, s) {
+    function wNAF(d, w) {
+      // https://en.wikipedia.org/wiki/Elliptic_curve_point_multiplication#w-ary_non-adjacent_form_(wNAF)_method
+      const da = [];
+      let pos = d.length - 1;
+      let carry = false;
+      while (pos >= 0 || carry) {
+        if ((pos >= 0 ? d.charCodeAt(pos) - '0'.charCodeAt(0) : 0) !== (carry ? 1 : 0)) {
+          let x = 0;
+          for (let i = pos + 1 - w; i <= pos; i += 1) {
+            x <<= 1;
+            x += (i >= 0 ? d.charCodeAt(i) - '0'.charCodeAt(0) : 0);
+          }
+          x += (carry ? 1 : 0);
+          if (x >= (1 << (w - 1))) {
+            x -= (1 << w);
+          }
+          da.push(x);
+          pos -= 1;
+          for (let i = 0; i < w - 1; i += 1) {
+            da.push(0);
+            pos -= 1;
+          }
+          carry = x < 0;
+        } else {
+          da.push(0);
+          pos -= 1;
+        }
+      }
+      while (da[da.length - 1] === 0) {
+        da.pop();
+      }
+      return da;
+    }
+    let w = 2;
+    const work = function (w, n) {
+      return 1 + Math.pow(2, w - 2) + 1 + n + n / (w + 1);
+    };
+    while (work(w + 1, s.length) < work(w, s.length)) {
+      w += 1;
+    }
+    const d = wNAF(s, w);
+    const cache = {};
+    let Q = null;
+    for (let j = d.length - 1; j >= 0; j -= 1) {
+      if (Q != null) {
+        Q = doublePoint(a, Q);
+        if (Q == null) {
+          return null;
+        }
+      }
+      if (d[j] !== 0) {
+        //let x = d[j] * P;
+        let i = Math.abs(d[j]);
+        if (cache[i] == null) {
+          cache[1] = P;
+          for (let k = 3; k <= i; k += 2) {
+            if (cache[k] == null) {
+              if (cache[2] == null) {
+                cache[2] = doublePoint(a, cache[1]);
+                if (cache[2] == null) {
+                  return null;
+                }
+              }
+              cache[k] = addPoints(a, cache[k - 2], cache[2]);
+              if (cache[k] == null) {
+                return null;
+              }
+            }
+          }
+        }
+        const X = cache[i];
+        if (Q == null) {
+          Q = X;
+        } else {
+          if (d[j] < 0) {
+            Q = addPoints(a, Q, negatePoint(X))
+            if (Q == null) {
+              return null;
+            }
+          } else {
+            Q = addPoints(a, Q, X);
+            if (Q == null) {
+              return null;
+            }
+          }
+        }
+      }
+    }
+    return Q;
+  };
+
   const scalePoint = function (a, P, s) {
     // https://cs.au.dk/~ivan/FastExpproject.pdf
-    const chain = wAryNonAdjacentFormMultiplicationChain(BigInt(s), 9);
-    const g = [];
-    g.push(P);
-    for (const e of chain) {
-      const P1 = g[e[0]];
-      const P2 = e[1] < 0 ? negatePoint(g[-1 - e[1]]) : g[e[1]];
-      let P3 = null;
-      if (+e[0] === +e[1]) { // P1 === P2
-        P3 = doublePoint(a, P1);
-      } else {
-        P3 = addPoints(a, P1, P2);
-      }
-      if (P3 == null) {
-        return null;
-      }
-      g.push(P3);
-    }
-    return g[g.length - 1];
+    return wAryNonAdjacentFormMultiplication(a, P, s.toString(2));
   };
 
   const SuyamaParametrization = function (sigma, N) {
@@ -338,12 +355,29 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16) {
 
     return {x0: x0, y0: y0, a: a};
   };
+
+  const product = function (array) {
+    if (array.length > 16) {
+      const middle = Math.floor(array.length / 2);
+      return product(array.slice(0, middle)) * product(array.slice(middle));
+    }
+    let p = BigInt(1);
+    for (let i = 0; i < array.length; i += 1) {
+      p *= BigInt(array[i]);
+    }
+    return p;
+  };
   
   const verbose = true;//TODO: ?
+  const B2 = Math.ceil(B * Math.log2(B) * 7 * 1.5);// !?
 
   const C = Math.min(curves, parallelCurves);
   let curveIndex = 0;
   while (curveIndex < curves) {
+    if (verbose) {
+      console.debug('B1: ', B, 'B2: ', B2, 'curves: ', (curveIndex + C) + '/' + curves);
+    }
+
     const curvesArray = new Array(C);
     const x = new Array(C);
     const y = new Array(C);
@@ -370,11 +404,7 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16) {
     if (verbose) {
       console.time('stage1');
     }
-    let s = BigInt(1);
-    for (const p of primes(B)) {
-      const k = Math.floor(Math.log2(B) / Math.log2(p));
-      s *= BigInt(Math.pow(p, k));
-    }
+    const s = product(primes(B).map(p => Math.pow(p, Math.floor(Math.log2(B) / Math.log2(p)))));
     const sP = scalePoint(curvesArray, P, s);
     if (verbose) {
       console.timeEnd('stage1');
@@ -395,7 +425,6 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16) {
       if (verbose) {
         console.time('stage2');
       }
-      const B2 = Math.ceil(B * Math.log2(B) * 7 * 1.5);// !?
       // Stage 2 has an optimization to reduce number of curve operations:
       // It is some very-very simplified idea from https://www.hyperelliptic.org/tanja/SHARCS/talks06/Gaj.pdf :
 
