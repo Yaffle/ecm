@@ -16,9 +16,12 @@ function factors(n, count) {
 }
 
 console.time();
-console.log(factors(2n**2048n+1n, 5)); //  ~6 minutes
+console.log(factors(2n**2048n+1n, 5)); //  ~3 minutes
 console.timeEnd();
 
+console.time();
+console.log(factors(2n**1024n+1n, 4)); //  ~2 days
+console.timeEnd();
 
 ```
 

@@ -408,7 +408,6 @@ function halfgcd(a, b, extended = true, reallyhalfgcd = true, wrapper = false) {
 
   while ((reallyhalfgcd || a > SMALL_GCD_MAX) && b !== 0n) {
     //console.assert(a >= b);
-    step += 1;
 
     if (!isSmall) {
       // Subquadratic Lehmer's algorithm:
@@ -418,6 +417,9 @@ function halfgcd(a, b, extended = true, reallyhalfgcd = true, wrapper = false) {
           continue;
         }
       }
+    }
+    step += 1;
+    if (!isSmall) {
       if (reallyhalfgcd && step === 1) {
         sizea0 = bitLength(a);
       }
@@ -623,6 +625,29 @@ function gcdext(a, b) {
   return LehmersGCDExt(BigInt(a), BigInt(b));
 }
 
+function invmod(a, m) {
+  const [A, B, C, D, a1, b1] = halfgcd(m, a, true, false);
+  if (BigInt(b1) !== 0n) {
+    const [A1, B1, g] = smallgcdext(a1, b1);
+    if (BigInt.asUintN(64, g) !== 1n) {
+      return 0n;
+    }
+    const B2 = A1 * BigInt(B) + B1 * BigInt(D);
+    if (B2 < 0n) {
+      return B2 + m;
+    }
+    return B2;
+  }
+  if (BigInt(a1) !== 1n) {
+    return 0n;
+  }
+  const B1 = BigInt(B);
+  if (B1 < 0n) {
+    return B1 + m;
+  }
+  return B1;
+}
+
 function halfgcdWrapper(a, b) {
   // reduce numbers as much as possible:
   return halfgcd(a, b, true, true, true);
@@ -632,3 +657,4 @@ export default gcd;
 
 gcd.halfgcd = halfgcdWrapper;//TODO:?
 gcd.gcdext = gcdext;//TODO:?
+gcd.invmod = invmod;//TODO:?
