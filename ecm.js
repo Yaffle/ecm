@@ -94,6 +94,7 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
   // https://github.com/trizen/sidef-scripts/blob/master/Math/elliptic-curve_factorization_method.sf
   // and Cohen 93
 
+  const useSuyamaParametrization = true;
   parallelCurves = Math.min(parallelCurves, curves);
 
   let failure = BigInt(1);
@@ -114,6 +115,16 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
     let y = a - b;
     if (y < BigInt(0)) {
       y += sN;
+    }
+    return y;
+  };
+  const modadd = function (a, b) {
+    if (typeof a !== 'bigint' || typeof b !== 'bigint') {
+      throw new TypeError();
+    }
+    let y = a + b;
+    if (y >= sN) {
+      y -= sN;
     }
     return y;
   };
@@ -192,8 +203,8 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
   WeierstrassCurve.prototype.arraySize = function () {
     return 1;
   };
-  WeierstrassCurve.prototype.getWeierstrassXarray = function (points, i) {
-    return points.map(P => P == null ? null : P.x);
+  WeierstrassCurve.prototype.toWeierstrassPoints = function (points, i) {
+    return points.map(P => ({x: P.x % N, y: P.y % N}));
   };
 
   function WeierstrassCurvesArray(array) {
@@ -239,8 +250,8 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
   WeierstrassCurvesArray.prototype.arraySize = function () {
     return this.array.length;
   };
-  WeierstrassCurvesArray.prototype.getWeierstrassXarray = function (points, i) {
-    return points.map(P => P == null ? null : P[i].x);
+  WeierstrassCurvesArray.prototype.toWeierstrassPoints = function (points, index) {
+    return this.array[index].toWeierstrassPoints(points.map(P => P[index]));
   };
 
   const wAryNonAdjacentFormMultiplication = function (curve, P, s) {
@@ -279,7 +290,7 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
     }
     let w = 2;
     const work = function (w, n) {
-      return 1 + Math.pow(2, w - 2) + 1 + n + n / (w + 1);
+      return 1 + Math.pow(2, w - 2) - 1 + n + n / (w + 1);
     };
     while (work(w + 1, s.length) < work(w, s.length)) {
       w += 1;
@@ -413,31 +424,28 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
     return p;
   };
 
-  const generateCurveAndStartingPoint = function (curveIndex) {
-    const curvesArray = [];
-    const points = [];
-    while (curvesArray.length < parallelCurves) {
-      let a = BigInt(curveIndex % 2 === 0 ? 3 + Math.floor(curveIndex / 2) : -(3 + Math.floor((curveIndex - 1) / 2)));
-      let x = BigInt(0);
-      let y = BigInt(1);
-      if (true) {
-        const tmp1 = SuyamaParametrization(BigInt(6) + BigInt(curveIndex + curvesArray.length) + BigInt(curveParam), N);
-        if (tmp1 != null) {
-          const tmp2 = MontgomeryToWeierstrass(tmp1.x, tmp1.y, tmp1.a, tmp1.b, N);
-          if (tmp2 != null) {
-            const a = tmp2.a;
-            const x = tmp2.x;
-            const y = tmp2.y;
-            curvesArray.push(new WeierstrassCurve(a));
-            points.push({x: x, y: y});
-          }
+  const generateCurveAndStartingPoint = function (curveIndex, parallelCurves) {
+    if (parallelCurves !== 1) {
+      const curvesArray = [];
+      const points = [];
+      while (curvesArray.length < parallelCurves) {
+        const tmp = generateCurveAndStartingPoint(curveIndex + curvesArray.length, 1);
+        curvesArray.push(tmp.curve);
+        points.push(tmp.startingPoint);
+      }
+      return {curve: new WeierstrassCurvesArray(curvesArray), startingPoint: points};
+    }
+    if (useSuyamaParametrization) {
+      const tmp1 = SuyamaParametrization(BigInt(6) + BigInt(curveIndex), N);
+      if (tmp1 != null) {
+        const tmp2 = MontgomeryToWeierstrass(tmp1.x, tmp1.y, tmp1.a, tmp1.b, N);
+        if (tmp2 != null) {
+          return {curve: new WeierstrassCurve(tmp2.a), startingPoint: {x: tmp2.x, y: tmp2.y}};
         }
-      } else {
-        curvesArray.push(new WeierstrassCurve(a));
-        points.push({x: x, y: y});
       }
     }
-    return {curve: new WeierstrassCurvesArray(curvesArray), startingPoint: points};
+    const a = BigInt(3 + curveIndex);
+    return {curve: new WeierstrassCurve(a), startingPoint: {x: BigInt(0), y: BigInt(1)}};
   };
 
   const verbose = true;//TODO: ?
@@ -445,7 +453,7 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
 
   let curveIndex = 0;
   while (curveIndex < curves) {
-    const tmp = generateCurveAndStartingPoint(curveIndex);
+    const tmp = generateCurveAndStartingPoint(curveIndex + curveParam, parallelCurves);
     const curve = tmp.curve;
     let P = tmp.startingPoint;
     curveIndex += curve.arraySize();
@@ -585,8 +593,21 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
           if (failure !== BigInt(1)) {
             break;
           }
-          const x1array = curve.getWeierstrassXarray(P1array, i).map(x => x == null ? null : x % N); // P1array.map(P => P == null ? null : P.x[i] % N);
-          const x2array = curve.getWeierstrassXarray(P2array, i).map(x => x == null ? null : x % N); // P2array.map(P => P == null ? null : P.x[i] % N);
+          const restoreNulls = function (values, points) {
+            const res = new Array(points.length);
+            let k = 0;
+            for (let i = 0; i < points.length; i += 1) {
+              if (points[i] == null) {
+                res[i] = null;
+              } else {
+                res[i] = values[k];
+                k += 1;
+              }
+            }
+            return res;
+          };
+          const x1array = restoreNulls(curve.toWeierstrassPoints(P1array.filter(P => P != null), i).map(P => P.x), P1array);
+          const x2array = restoreNulls(curve.toWeierstrassPoints(P2array.filter(P => P != null), i).map(P => P.x), P2array);
 
           // now we want to calc gcd(prod_i prod_j (x_(1,i)-x_(2,j)) mod N, N)
 
@@ -604,17 +625,23 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
             const polynomial = Polynomial.fromRoots(x1s, N);
             const products = Polynomial.evaluateModP(polynomial, x2s, N);
             //console.timeEnd('products');
+            var p = BigInt(1);
             for (let j = 0; j < products.length; j += 1) {
-              const product = products[j];
-              const u = BigInt(gcd(product, N));
-              if (u < 1 || u > N) throw new Error();
-              if (u !== BigInt(1) && u !== BigInt(N)) {
-                failure = u;
-                break;
-              }
-              //TODO: - ?
-              if (u !== BigInt(1)) {
-                console.warn('N');
+              p = modmul(p, products[j]);
+            }
+            if (BigInt(gcd(p, N)) !== BigInt(1)) {
+              for (let j = 0; j < products.length; j += 1) {
+                const product = products[j];
+                const u = BigInt(gcd(product, N));
+                if (u < 1 || u > N) throw new Error();
+                if (u !== BigInt(1) && u !== BigInt(N)) {
+                  failure = u;
+                  break;
+                }
+                //TODO: - ?
+                if (u !== BigInt(1)) {
+                  console.warn('N');
+                }
               }
             }
           } else {
