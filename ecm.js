@@ -317,6 +317,13 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
       //res[i] = x % N;
       const y = modmul(P.y, invs[i]);
       res[i] = y % N;
+      if (y === 0n) {
+        const u = gcd(P.z, N);
+        if (u !== BigInt(1) && u !== BigInt(N)) {
+          failure = u;
+          return [];
+        }
+      }
     }
     return res;
   };
@@ -478,7 +485,7 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
     if (useTwistedEdwardsCurves) {
       // to make TwistedEdwardsCurve param a smaller:
       // Let a = s**2 * a_0:
-      const s = (v - u) * v * invmod(2n * u**2n, N); // a === (v - u) * (3n * u + v) * invmod(4n * u**4n, N) * v**2n * (v - u)**2n % N;
+      const s = (v - u) * v * invmod(2n * u * u, N); // a === (v - u) * (3n * u + v) * invmod(4n * u**4n, N) * v**2n * (v - u)**2n % N;
       const sInv = invmod(s, N);
       if (sInv !== BigInt(0)) {
         b = b * s * s % N;
@@ -567,6 +574,20 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
     }
     const a = BigInt(3 + curveIndex);
     return {curve: new WeierstrassCurve(a), startingPoint: {x: BigInt(0), y: BigInt(1)}};
+  };
+
+  const restoreNulls = function (values, points) {
+    const res = new Array(points.length);
+    let k = 0;
+    for (let i = 0; i < points.length; i += 1) {
+      if (points[i] == null) {
+        res[i] = null;
+      } else {
+        res[i] = values[k];
+        k += 1;
+      }
+    }
+    return res;
   };
 
   const pointsRange = function (curve, P, to) {
@@ -726,21 +747,11 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
           if (failure !== BigInt(1)) {
             break;
           }
-          const restoreNulls = function (values, points) {
-            const res = new Array(points.length);
-            let k = 0;
-            for (let i = 0; i < points.length; i += 1) {
-              if (points[i] == null) {
-                res[i] = null;
-              } else {
-                res[i] = values[k];
-                k += 1;
-              }
-            }
-            return res;
-          };
           const x1array = restoreNulls(curve.phi(P1array.filter(P => P != null), i), P1array);
           const x2array = restoreNulls(curve.phi(P2array.filter(P => P != null), i), P2array);
+          if (failure !== BigInt(1)) {
+            break;
+          }
 
           // now we want to calc gcd(prod_i prod_j (x_(1,i)-x_(2,j)) mod N, N)
 
