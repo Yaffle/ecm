@@ -29,7 +29,7 @@ function ecm(N, unlimited = false) {
   const factorDigits = unlimited ? 1/0 : (N.toString(2).length * Math.log10(2)) / 4;//TODO: !?
   // https://www.rieselprime.de/ziki/Elliptic_curve_method
   const B = Math.min(Math.round(Math.pow(5, factorDigits / 5) * 16), 1e300);
-  const minB = N < BigInt(10**10) ? 16 : 400;
+  const minB = N < BigInt(Math.pow(10, 10)) ? 16 : 400;
   let B1 = B;
   while (B1 > minB) {
     B1 = Math.floor(B1 / 5);
@@ -49,7 +49,7 @@ function makeBarrettReduction(N) {
   // Barrett Reduction
   // https://www.youtube.com/watch?v=SwYQeeBWlRo&list=PLhCN8H4P5Lvgx5MrIibav6KgbhYj-mn_D&index=7
   const k = N.toString(2).length;//TODO:
-  const NInv = (BigInt(1) << BigInt(k + k)) / N;
+  const NInv = (BigInt(1) << BigInt(2 * k)) / N;
   const km1 = BigInt(k - 1);
   const kp1 = BigInt(k + 1);
   const useBarrettReduction = k > 256;//?
@@ -67,18 +67,18 @@ function makeBarrettReduction(N) {
 
 function makeSpecialReduction(N) {
   const k = N.toString(2).length;
-  const NInv = invmod(N, BigInt(1) << BigInt(k - 1));//?
-  const k1 = (N * NInv).toString(2).length - 1;
-  const bk1 = BigInt(k1);
+  const NInv = BigInt(invmod(N, BigInt(1) << BigInt(k - 1)));//?
   const sN = N * NInv;
+  const k1 = sN.toString(2).length - 1;
+  const bk1 = BigInt(k1);
   const c = sN - (BigInt(1) << bk1);
   if (c === BigInt(1)) {
     console.debug("reduction for numbers of form 2^n+1 will be used");
-    const mask = (BigInt(1) << bk1) - BigInt(1);
+    //const mask = (BigInt(1) << bk1) - BigInt(1);
     return function (p) {
-      //let y = BigInt.asUintN(k1, p) - (p >> bk1);
+      let y = BigInt.asUintN(k1, p) - (p >> bk1);
       // (p & mask) is slightly faster somehow then BigInt>sUintN(k1, p):
-      let y = (p & mask) - (p >> bk1);
+      //let y = (p & mask) - (p >> bk1);
       //y = y % N;
       if (y < BigInt(0)) {
         y += sN;
@@ -104,10 +104,13 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
   let modMuls = 0;
 
   const reduction1 = makeSpecialReduction(N);
-  const modreduction = reduction1 || makeBarrettReduction(N) || function (p) { return p % N; };
+  const modreduction = reduction1 || makeBarrettReduction(N) || function (p) { if (typeof p !== 'bigint' || typeof N !== 'bigint') { throw new TypeError(); } return p % N; };
   const sN = reduction1 != null ? reduction1(BigInt(-1)) + BigInt(1) : N;//TODO: !?
 
   const modmul = function (a, b) {
+    if (typeof a !== 'bigint' || typeof b !== 'bigint') {
+      throw new TypeError();
+    }
     modMuls += 1;
     return modreduction(a * b);
   };
@@ -139,9 +142,15 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
     return y;
   };
   const modneg = function (a) {
+    if (typeof a !== 'bigint') {
+      throw new TypeError();
+    }
     return a === BigInt(0) ? a : sN - a;
   };
   const modmulsmall = function (a, b) {
+    if (typeof a !== 'bigint' || typeof b !== 'bigint') {
+      throw new TypeError();
+    }
     return (a * b) % sN;
   };
 
@@ -153,7 +162,7 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
     for (let i = 1; i < n; i += 1) {
       c[i] = modmul(c[i - 1], a[i]);
     }
-    let u = BigInt(invmod(c[n - 1] % N, N));
+    let u = BigInt(invmod(BigInt(c[n - 1]) % N, N));
     for (let i = n - 1; i >= 1; i -= 1) {
       c[i] = modmul(u, c[i - 1]);
       u = modmul(u, a[i]);
@@ -210,7 +219,7 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
     return 1;
   };
   WeierstrassCurve.prototype.phi = function (points, i) {
-    return points.map(P => P.x % N);
+    return points.map(P => BigInt(P.x) % N);
   };
 
   function WeierstrassCurvesArray(array) {
@@ -273,7 +282,7 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
     const D = modmul(P1.t, P2.z);
     const E = modadd(D, C);
     const F = modsub(modadd(modmul(modsub(P1.x, P1.y), modadd(P2.x, P2.y)), B), A);
-    const G = modsub(B, modmulsmall(-this.a, A));
+    const G = modsub(B, modmulsmall(-BigInt(this.a), A));
     const H = modsub(D, C);
     const x = modmul(E, F);
     const y = modmul(G, H);
@@ -287,7 +296,7 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
     const B = modmul(A, A);
     const C = modmul(P.x, P.x);
     const D = modmul(P.y, P.y);
-    const E = modneg(modmulsmall(-this.a, C));
+    const E = modneg(modmulsmall(-BigInt(this.a), C));
     const F = modadd(E, D);
     const H = modmul(P.z, P.z);
     const J = modsub(F, moddup(H));
@@ -318,7 +327,7 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
       const P = points[i];
       //const x = modmul(modadd(P.z, P.y), invs[i]);
       //res[i] = x % N;
-      const y = modmul(P.y, invs[i]);
+      const y = BigInt(modmul(P.y, invs[i]));
       res[i] = y % N;
       if (y === BigInt(0)) {
         const u = gcd(P.z, N);
@@ -332,7 +341,10 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
   };
 
   const MontgomeryToTwistedEdwards = function (x_m, y_m, A, B, N) {
-    let x_e = x_m * invmod(y_m, N) % N;
+    if (typeof N !== 'bigint') {
+      throw new TypeError();
+    }
+    let x_e = x_m * BigInt(invmod(y_m, N)) % N;
     let y_e = (x_m - BigInt(1)) * invmod(x_m + BigInt(1), N) % N;
     let a = (A + BigInt(2)) * invmod(B, N) % N;
     let d = (A - BigInt(2)) * invmod(B, N) % N;
@@ -357,11 +369,11 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
       let pos = d.length - 1;
       let carry = false;
       while (pos >= 0 || carry) {
-        if ((pos >= 0 ? d.charCodeAt(pos) - '0'.charCodeAt(0) : 0) !== (carry ? 1 : 0)) {
+        if ((pos >= 0 ? +d.charCodeAt(pos) - +'0'.charCodeAt(0) : 0) !== (carry ? 1 : 0)) {
           let x = 0;
           for (let i = pos + 1 - w; i <= pos; i += 1) {
             x <<= 1;
-            x += (i >= 0 ? d.charCodeAt(i) - '0'.charCodeAt(0) : 0);
+            x += (i >= 0 ? +d.charCodeAt(i) - +'0'.charCodeAt(0) : 0);
           }
           x += (carry ? 1 : 0);
           if (x >= (1 << (w - 1))) {
@@ -388,7 +400,7 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
     const work = function (w, n) {
       return 1 + Math.pow(2, w - 2) - 1 + n + n / (w + 1);
     };
-    while (work(w + 1, s.length) < work(w, s.length)) {
+    while (+work(w + 1, s.length) < +work(w, s.length)) {
       w += 1;
     }
     const d = wNAF(s, w);
@@ -485,7 +497,7 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
   };
 
   const MontgomeryToWeierstrass = function (x, y, a, b, N) {
-    const bInv = invmod(b, N);
+    const bInv = BigInt(invmod(b, N));
     if (bInv === BigInt(0)) {
       return null;
     }
@@ -518,7 +530,7 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
   const product = function (array) {
     if (array.length > 16) {
       const middle = Math.floor(array.length / 2);
-      return product(array.slice(0, middle)) * product(array.slice(middle));
+      return BigInt(product(array.slice(0, middle))) * BigInt(product(array.slice(middle)));
     }
     let p = BigInt(1);
     for (let i = 0; i < array.length; i += 1) {
@@ -528,6 +540,9 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
   };
 
   const generateCurveAndStartingPoint = function (curveIndex, parallelCurves) {
+    if (typeof curveIndex !== 'number' || typeof parallelCurves !== 'number') {
+      throw new TypeError();
+    }
     if (!useTwistedEdwardsCurves && parallelCurves !== 1) {
       const curvesArray = [];
       const points = [];
@@ -643,9 +658,9 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
     }
     const s = product(primes(B).map(p => Math.pow(p, Math.floor(Math.log2(B) / Math.log2(p)))));
     const modMuls0 = modMuls;
-    const start = Date.now();
+    const start = +Date.now();
     let sP = scalePoint(curve, P, s);
-    const end = Date.now();
+    const end = +Date.now();
     if (verbose) {
       console.timeEnd('stage1');
     }
@@ -655,9 +670,9 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
     ecm.modMuls = modMuls;
 
     if (useTwistedEdwardsCurves && sP != null && sP.z != null) {
-      let g = gcd(sP.x, N);
+      let g = BigInt(gcd(sP.x, N));
       let B1 = B;
-      while (g === N && B1 >= 2) {
+      while (BigInt(g) === BigInt(N) && B1 >= 2) {
         //TODO: what to do here?
         if (B === B1) {
           console.warn('N!', N);
@@ -750,7 +765,7 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
             let x2s = x2array.filter(x => x != null);
             let x1s = x1array.filter(x => x != null);
             //console.debug('x1s, x2s', x1s.length, x2s.length, d, B);
-            if (x1s.length < x2s.length) {
+            if (+x1s.length < +x2s.length) {
               //console.warn('<');
               const tmp = x1s;
               x1s = x2s;
@@ -852,7 +867,7 @@ function fromRoots(roots, p) {
     return [BigInt(1)];
   }
   if (roots.length === 1) {
-    return [p - roots[0], BigInt(1)];
+    return [p - BigInt(roots[0]), BigInt(1)];
   }
   const middle = Math.floor(roots.length / 2);
   const A = fromRoots(roots.slice(0, middle), p);
@@ -866,7 +881,7 @@ function height(A) {
   let max = BigInt(0);
   let min = BigInt(0);
   for (let i = 0; i < A.length; i += 1) {
-    let a = A[i];
+    const a = BigInt(A[i]);
     if (a > max) {
       max = a;
     } else if (min > a) {
@@ -879,7 +894,7 @@ function height(A) {
 function multiplyKS(A, B) {
 
   function bitLength(a) {
-    const n = Number(a);
+    const n = Number(BigInt(a));
     if (n < 1/0) {
       return Math.ceil(Math.log2(n + 0.5)) + 1;//?
     }
@@ -889,13 +904,13 @@ function multiplyKS(A, B) {
   function toInteger(coefficients, blockSize) {
     const bigIntCache = new Array(coefficients.length).fill(null);
     function toIntegerInternal(start, end) {
-      const k = end - start;
+      const k = (end | 0) - (start | 0);
       if (k >= 2) {
         const m = Math.ceil(k / 2);
         if (bigIntCache[m] == null) {
           bigIntCache[m] = BigInt(blockSize * m);
         }
-        return (toIntegerInternal(start + m, end) << bigIntCache[m]) | toIntegerInternal(start, start + m);
+        return (BigInt(toIntegerInternal(start + m, end)) << bigIntCache[m]) + BigInt(toIntegerInternal(start, start + m));
       } else if (k === 1) {
         return coefficients[start];
       } else {
@@ -911,7 +926,7 @@ function multiplyKS(A, B) {
     const k = blocksCount;
     const coefficients = new Array(k);
     function toPolynomialInternal(C, start, end) {
-      const k = end - start;
+      const k = (end | 0) - (start | 0);
       if (k >= 2) {
         const m = Math.ceil(k / 2);
         const r = BigInt.asUintN(blockSize * m, C);
@@ -919,7 +934,7 @@ function multiplyKS(A, B) {
         if (bigIntCache[m] == null) {
           bigIntCache[m] = BigInt(blockSize * m);
         }
-        const q = C >> bigIntCache[m];
+        const q = BigInt(C) >> bigIntCache[m];
         toPolynomialInternal(q, start + m, end);
       } else if (k === 1) {
         coefficients[start] = C;
@@ -933,8 +948,8 @@ function multiplyKS(A, B) {
 
   const blockSize = (bitLength(height(A)) + bitLength(height(B))) + Math.ceil(Math.log2(Math.min(degree(A) + 1, degree(B) + 1)));
   const blocksCount = degree(A) + degree(B) + 1;
-  const Ai = toInteger(A, blockSize);
-  const Bi = toInteger(B, blockSize);
+  const Ai = BigInt(toInteger(A, blockSize));
+  const Bi = BigInt(toInteger(B, blockSize));
   const P = Ai * Bi;
   return toPolynomial(P, blockSize, blocksCount);
 }
@@ -943,7 +958,7 @@ function multiplySchoolbook(a, b) {
   const c = new Array(a.length - 1 + b.length - 1 + 1).fill(BigInt(0));
   for (let i = 0; i < a.length; i += 1) {
     for (let j = 0; j < b.length; j += 1) {
-      c[i + j] += a[i] * b[j];
+      c[i + j] += BigInt(a[i]) * BigInt(b[j]);
     }
   }
   return c;
@@ -958,8 +973,8 @@ function multiply(A, B) {
 
 function mod(A, p) {
   return A.map(function (a) {
-    const t = a % p;
-    return t < BigInt(0) ? t + p : t;
+    const t = BigInt(a) % p;
+    return t < BigInt(0) ? BigInt(t) + p : t;
   });
 }
 
@@ -978,13 +993,13 @@ function subtract(a, b) {
   const c = new Array(Math.max(a.length, b.length));
   const min = Math.min(a.length, b.length);
   for (let i = 0; i < min; i += 1) {
-    c[i] = a[i] - b[i];
+    c[i] = BigInt(a[i]) - BigInt(b[i]);
   }
   for (let i = min; i < a.length; i += 1) {
     c[i] = a[i];
   }
   for (let i = min; i < b.length; i += 1) {
-    c[i] = -b[i];
+    c[i] = -BigInt(b[i]);
   }
   return c;
 }
@@ -1141,14 +1156,14 @@ if (false) {
   var P0 = [BigInt(2), -BigInt(3), BigInt(1)]; // x^2-3x+2
   var P0inv = LaurentSeries.inverse(P0, 4, BigInt(1) << BigInt(1024));
   var X2 = P0inv.multiplyMod1(U, degree(P0), BigInt(1) << BigInt(1024));
-  console.assert(X.toString() === X2.toString());//???
+  console.assert(String(X.toString()) === String(X2.toString()));//???
 
   var R = X.multiplyTrunc(P0);
   console.assert(R.toString() === '-19,28', R);
 
 
   var vals = Polynomial.evaluateModP(U, [BigInt(1), BigInt(2), BigInt(3), BigInt(4)], BigInt(1) << BigInt(1024));
-  console.assert(vals.toString() === [BigInt(9), BigInt(37), BigInt(103), BigInt(225)].toString());
+  console.assert(String(vals.toString()) === String([BigInt(9), BigInt(37), BigInt(103), BigInt(225)].toString()));
 
 
   var tests = [
@@ -1177,7 +1192,7 @@ if (false) {
   for (var test of tests) {
     try {
       var result = new LaurentSeries(test.A.map(n => BigInt(n)), test.e).multiplyMod1(test.B.map(n => BigInt(n)), test.precision, BigInt(1) << BigInt(1024));
-      console.assert(test.result != null && new LaurentSeries(test.result.map(n => BigInt(n)), 0 - test.precision).toString() === result.toString());
+      console.assert(test.result != null && String(new LaurentSeries(test.result.map(n => BigInt(n)), 0 - test.precision).toString()) === String(result.toString()));
     } catch (error) {
       console.assert(test.result == null, error);
     }
