@@ -105,7 +105,7 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
 
   const reduction1 = makeSpecialReduction(N);
   const modreduction = reduction1 || makeBarrettReduction(N) || function (p) { return p % N; };
-  const sN = reduction1 != null ? reduction1(-1n) + 1n : N;//TODO: !?
+  const sN = reduction1 != null ? reduction1(BigInt(-1)) + BigInt(1) : N;//TODO: !?
 
   const modmul = function (a, b) {
     modMuls += 1;
@@ -140,6 +140,9 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
   };
   const modneg = function (a) {
     return a === BigInt(0) ? a : sN - a;
+  };
+  const modmulsmall = function (a, b) {
+    return (a * b) % sN;
   };
 
   const modInvParallel = function (a) {
@@ -270,7 +273,7 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
     const D = modmul(P1.t, P2.z);
     const E = modadd(D, C);
     const F = modsub(modadd(modmul(modsub(P1.x, P1.y), modadd(P2.x, P2.y)), B), A);
-    const G = modadd(B, (this.a < 0n ? modneg(modmul(-this.a, A)) : modmul(this.a, A)));
+    const G = modsub(B, modmulsmall(-this.a, A));
     const H = modsub(D, C);
     const x = modmul(E, F);
     const y = modmul(G, H);
@@ -284,7 +287,7 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
     const B = modmul(A, A);
     const C = modmul(P.x, P.x);
     const D = modmul(P.y, P.y);
-    const E = (this.a < 0n ? modneg(modmul(-this.a, C)) : modmul(this.a, C));
+    const E = modneg(modmulsmall(-this.a, C));
     const F = modadd(E, D);
     const H = modmul(P.z, P.z);
     const J = modsub(F, moddup(H));
@@ -310,14 +313,14 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
       v[i] = P.z;
     }
     const invs = modInvParallel(v);
-    const res = new Array(points.length)
+    const res = new Array(points.length);
     for (let i = 0; i < points.length; i += 1) {
       const P = points[i];
       //const x = modmul(modadd(P.z, P.y), invs[i]);
       //res[i] = x % N;
       const y = modmul(P.y, invs[i]);
       res[i] = y % N;
-      if (y === 0n) {
+      if (y === BigInt(0)) {
         const u = gcd(P.z, N);
         if (u !== BigInt(1) && u !== BigInt(N)) {
           failure = u;
@@ -330,13 +333,13 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
 
   const MontgomeryToTwistedEdwards = function (x_m, y_m, A, B, N) {
     let x_e = x_m * invmod(y_m, N) % N;
-    let y_e = (x_m - 1n) * invmod(x_m + 1n, N) % N;
-    let a = (A + 2n) * invmod(B, N) % N;
-    let d = (A - 2n) * invmod(B, N) % N;
-    if (x_e == 0n || y_e === 0n || a === 0n || d === 0n) {
+    let y_e = (x_m - BigInt(1)) * invmod(x_m + BigInt(1), N) % N;
+    let a = (A + BigInt(2)) * invmod(B, N) % N;
+    let d = (A - BigInt(2)) * invmod(B, N) % N;
+    if (x_e == BigInt(0) || y_e === BigInt(0) || a === BigInt(0) || d === BigInt(0)) {
       return null;
     }
-    console.assert((a * x_e * x_e + y_e * y_e - (1n + d * x_e * x_e * y_e * y_e)) % N === 0n); // Twisted Edwards Curve
+    console.assert((a * x_e * x_e + y_e * y_e - (BigInt(1) + d * x_e * x_e * y_e * y_e)) % N === BigInt(0)); // Twisted Edwards Curve
 
     x_e = x_e < BigInt(0) ? x_e + N : x_e;
     y_e = y_e < BigInt(0) ? y_e + N : y_e;
@@ -345,17 +348,6 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
 
     return {x: x_e, y: y_e, a: a, d: d};
   };
-
-  const TwistedEdwardsToMontgomery = function (a, d, P) {
-    const A = 2n * (a + d) * invmod(a - d + N, N) % N;
-    const B = 4n * invmod(a - d + N, N) % N;
-    let x = (P.z + P.y) * invmod(P.z - P.y, N) % N;
-    let y = P.z * invmod(P.x, N) * x % N;
-    return {x_m: x, y_m: y, A: A, B: B};
-    //return MontgomeryToWeierstrass(x, y, A, B, N);
-  };
-
-  
 
 
   const wAryNonAdjacentFormMultiplication = function (curve, P, s) {
@@ -400,7 +392,18 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
       w += 1;
     }
     const d = wNAF(s, w);
-    const cache = {};
+    const cache = new Array(Math.pow(2, w - 2)).fill(null);
+    cache[0] = P;
+    const twoP = curve.doublePoint(P);
+    if (twoP == null) {
+      return null;
+    }
+    for (let k = 1; k < cache.length; k += 1) {
+      cache[k] = curve.addPoints(cache[k - 1], twoP);
+      if (cache[k] == null) {
+        return null;
+      }
+    }
     let Q = null;
     for (let j = d.length - 1; j >= 0; j -= 1) {
       if (Q != null) {
@@ -412,29 +415,13 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
       if (d[j] !== 0) {
         //let x = d[j] * P;
         let i = Math.abs(d[j]);
-        if (cache[i] == null) {
-          cache[1] = P;
-          for (let k = 3; k <= i; k += 2) {
-            if (cache[k] == null) {
-              if (cache[2] == null) {
-                cache[2] = curve.doublePoint(cache[1]);
-                if (cache[2] == null) {
-                  return null;
-                }
-              }
-              cache[k] = curve.addPoints(cache[k - 2], cache[2]);
-              if (cache[k] == null) {
-                return null;
-              }
-            }
-          }
-        }
-        const X = cache[i];
+        console.assert((i - 1) % 2 === 0);
+        const X = cache[(i - 1) >> 1];
         if (Q == null) {
           Q = X;
         } else {
           if (d[j] < 0) {
-            Q = curve.addPoints(Q, curve.negatePoint(X))
+            Q = curve.addPoints(Q, curve.negatePoint(X));
             if (Q == null) {
               return null;
             }
@@ -485,7 +472,7 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
     if (useTwistedEdwardsCurves) {
       // to make TwistedEdwardsCurve param a smaller:
       // Let a = s**2 * a_0:
-      const s = (v - u) * v * invmod(2n * u * u, N); // a === (v - u) * (3n * u + v) * invmod(4n * u**4n, N) * v**2n * (v - u)**2n % N;
+      const s = (v - u) * v * invmod(BigInt(2) * u * u, N); // a === (v - u) * (3 * u + v) * invmod(4 * u**4, N) * v**2 * (v - u)**2 mod N;
       const sInv = invmod(s, N);
       if (sInv !== BigInt(0)) {
         b = b * s * s % N;
@@ -557,7 +544,7 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
         if (useTwistedEdwardsCurves) {
           const tmp3 = MontgomeryToTwistedEdwards(tmp1.x, tmp1.y, tmp1.a, tmp1.b, N);
           if (tmp3 != null) {
-            return {curve: new TwistedEdwardsCurve(tmp3.a, tmp3.d), startingPoint: {x: tmp3.x, y: tmp3.y, z: 1n, t: modmul(tmp3.x, tmp3.y)}};
+            return {curve: new TwistedEdwardsCurve(tmp3.a, tmp3.d), startingPoint: {x: tmp3.x, y: tmp3.y, z: BigInt(1), t: modmul(tmp3.x, tmp3.y)}};
           }
         } else {
           const tmp2 = MontgomeryToWeierstrass(tmp1.x, tmp1.y, tmp1.a, tmp1.b, N);
@@ -569,7 +556,7 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
     }
     if (useTwistedEdwardsCurves) {
       const d = BigInt(curveIndex + 2);
-      const a = d * 2n * 2n + 1n - 2n * 2n;
+      const a = d * BigInt(2) * BigInt(2) + BigInt(1) - BigInt(2) * BigInt(2);
       return {curve: new TwistedEdwardsCurve(a, d), startingPoint: {x: BigInt(1), y: BigInt(2), z: BigInt(1), t: BigInt(1) * BigInt(2)}};
     }
     const a = BigInt(3 + curveIndex);
@@ -605,7 +592,11 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
   };
 
   const pointsRangeFiltered = function (curve, P, to, filter) {
-    const gaps = pointsRange(curve, curve.doublePoint(P), 7);//TODO: !?
+    const twoP = curve.doublePoint(P);
+    if (twoP == null) {
+      return null;
+    }
+    const gaps = pointsRange(curve, twoP, 7);
     let Q = null;
     let last = 0;
     const array = new Array(to + 1).fill(null);
@@ -648,13 +639,13 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
       console.time('stage1');
     }
     if (done != null && done()) {
-      return 0n;
+      return BigInt(0);
     }
     const s = product(primes(B).map(p => Math.pow(p, Math.floor(Math.log2(B) / Math.log2(p)))));
-    var modMuls0 = modMuls;
-    var start = Date.now();
+    const modMuls0 = modMuls;
+    const start = Date.now();
     let sP = scalePoint(curve, P, s);
-    var end = Date.now();
+    const end = Date.now();
     if (verbose) {
       console.timeEnd('stage1');
     }
@@ -742,7 +733,7 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
         const primesUpToB2 = useMultipointPolynomialEvaluation ? null : primes(B2);
         for (let i = 0; i < curve.arraySize(); i += 1) {
           if (done != null && done()) {
-            return 0n;
+            return BigInt(0);
           }
           if (failure !== BigInt(1)) {
             break;
@@ -769,7 +760,7 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
             const polynomial = Polynomial.fromRoots(x1s, N);
             const products = Polynomial.evaluateModP(polynomial, x2s, N);
             //console.timeEnd('products');
-            var p = BigInt(1);
+            let p = BigInt(1);
             for (let j = 0; j < products.length; j += 1) {
               p = modmul(p, products[j]);
             }
@@ -980,9 +971,9 @@ function calcAtMod(A, point, p) {
   return y;
 }
 
-function scale(A, s) {
-  return A.map(e => e * s);
-}
+//function scale(A, s) {
+//  return A.map(e => e * s);
+//}
 function subtract(a, b) {
   const c = new Array(Math.max(a.length, b.length));
   const min = Math.min(a.length, b.length);
