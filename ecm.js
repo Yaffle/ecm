@@ -638,7 +638,7 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
   };
 
   const verbose = true;//TODO: ?
-  const B2 = Math.ceil(B * Math.log2(B) * 7 * 1.5);// !?
+  const B2 = Math.ceil(B * Math.log2(B) * Math.log(B) * 1.5);// !?
 
   let curveIndex = 0;
   while (curveIndex < curves) {
@@ -680,7 +680,11 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
         B1 = Math.ceil(B1 / 2);
         const s = product(primes(B1).map(p => Math.pow(p, Math.floor(Math.log2(B1) / Math.log2(p)))));
         sP = scalePoint(curve, P, s);
-        g = gcd(sP.x, N);
+        if (sP == null) {// done
+          g = BigInt(1);
+        } else {
+          g = gcd(sP.x, N);
+        }
       }
       if (g > BigInt(1) && g < BigInt(N)) {
         sP = null;
