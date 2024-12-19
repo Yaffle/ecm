@@ -36,10 +36,16 @@ function ecm(N, unlimited = false) {
   }
   for (; B1 <= B; B1 *= 5) {
     const curves = Math.floor(Math.sqrt(B1)); //TODO: !?
-    const f = _ecm(N, curves, B1);//???
-    if (f !== BigInt(0)) {
-      return f;
+    let curveIndex = 0;
+    while (curveIndex < curves) {
+      console.debug('curves: ', curveIndex + '/' + curves);
+      const f = _ecm(N, B1, curveIndex);
+      if (f !== BigInt(0)) {
+        return f;
+      }
+      curveIndex += _ecm.parallelCurves;
     }
+    console.warn('failed to find a factor');
   }
   return BigInt(0);
 }
@@ -89,7 +95,8 @@ function makeSpecialReduction(N) {
   return null;
 }
 
-function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, done = null) {
+_ecm.parallelCurves = 1;
+function _ecm(N, B = 50000, curveParam = 0) {
   // Lenstra elliptic-curve factorization
   // from https://trizenx.blogspot.com/2018/10/continued-fraction-factorization-method.html:
   // https://github.com/trizen/sidef-scripts/blob/master/Math/elliptic-curve_factorization_method.sf
@@ -97,8 +104,10 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
 
   const useSuyamaParametrization = true;
   const useTwistedEdwardsCurves = true;
-  parallelCurves = Math.min(parallelCurves, curves);
-  curves = Math.ceil(curves / parallelCurves) * parallelCurves;//TODO: increase count of curves(?)
+  const parallelCurves = _ecm.parallelCurves | 0;
+  if (useTwistedEdwardsCurves && parallelCurves !== 1) {
+    throw new RangeError();
+  }
 
   let failure = BigInt(1);
   let modMuls = 0;
@@ -329,8 +338,8 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
       //res[i] = x % N;
       const y = BigInt(modmul(P.y, invs[i]));
       res[i] = y % N;
-      if (y === BigInt(0)) {
-        const u = gcd(P.z, N);
+      if (invs[i] === BigInt(0)) {
+        const u = gcd(v[i], N);
         if (u !== BigInt(1) && u !== BigInt(N)) {
           failure = u;
           return [];
@@ -442,9 +451,6 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
             if (Q == null) {
               return null;
             }
-          }
-          if (done != null && done()) {
-            return null;
           }
         }
       }
@@ -640,21 +646,16 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
   const verbose = true;//TODO: ?
   const B2 = Math.ceil(B * Math.log2(B) * Math.log(B) * 1.5);// !?
 
-  let curveIndex = 0;
-  while (curveIndex < curves) {
-    const tmp = generateCurveAndStartingPoint(curveIndex + curveParam, parallelCurves);
+  if (true) {
+    const tmp = generateCurveAndStartingPoint(curveParam, parallelCurves);
     const curve = tmp.curve;
     let P = tmp.startingPoint;
-    curveIndex += curve.arraySize();
     if (verbose) {
-      console.debug('B1: ', B, 'B2: ', B2, 'curves: ', curveIndex + '/' + curves);
+      console.debug('B1: ', B, 'B2: ', B2, 'curveParam: ', curveParam);
     }
     // Phase 1 / Stage 1:
     if (verbose) {
       console.time('stage1');
-    }
-    if (done != null && done()) {
-      return BigInt(0);
     }
     const s = product(primes(B).map(p => Math.pow(p, Math.floor(Math.log2(B) / Math.log2(p)))));
     const modMuls0 = modMuls;
@@ -699,7 +700,8 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
         }
         return failure;
       }
-      continue;
+      console.warn('N');
+      return BigInt(0);
     }
 
     if (true) {
@@ -751,9 +753,6 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
 
         const primesUpToB2 = useMultipointPolynomialEvaluation ? null : primes(B2);
         for (let i = 0; i < curve.arraySize(); i += 1) {
-          if (done != null && done()) {
-            return BigInt(0);
-          }
           if (failure !== BigInt(1)) {
             break;
           }
@@ -848,7 +847,6 @@ function _ecm(N, curves = 200, B = 50000, parallelCurves = 16, curveParam = 0, d
     }
   }
 
-  console.warn('failed to find a factor');
   return BigInt(0);
 }
 
