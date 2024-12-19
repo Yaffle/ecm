@@ -43,7 +43,7 @@ function ecm(N, unlimited = false) {
       if (f !== BigInt(0)) {
         return f;
       }
-      curveIndex += _ecm.parallelCurves;
+      curveIndex += 1;
     }
     console.warn('failed to find a factor');
   }
@@ -95,7 +95,6 @@ function makeSpecialReduction(N) {
   return null;
 }
 
-_ecm.parallelCurves = 1;
 function _ecm(N, B = 50000, curveParam = 0) {
   // Lenstra elliptic-curve factorization
   // from https://trizenx.blogspot.com/2018/10/continued-fraction-factorization-method.html:
@@ -103,11 +102,6 @@ function _ecm(N, B = 50000, curveParam = 0) {
   // and Cohen 93
 
   const useSuyamaParametrization = true;
-  const useTwistedEdwardsCurves = true;
-  const parallelCurves = _ecm.parallelCurves | 0;
-  if (useTwistedEdwardsCurves && parallelCurves !== 1) {
-    throw new RangeError();
-  }
 
   let failure = BigInt(1);
   let modMuls = 0;
@@ -181,103 +175,6 @@ function _ecm(N, B = 50000, curveParam = 0) {
     return c;
   };
 
-  // https://en.wikipedia.org/wiki/Elliptic_curve_point_multiplication#Point_operations
-
-  function WeierstrassCurve(a) {
-    this.a = a;
-  }
-  WeierstrassCurve.prototype.addPoints = function (P1, P2, u = undefined) { // P1 !== P2
-    const v = modsub(P1.x, P2.x);
-    if (u == undefined) {
-      u = invmod(v, N);
-    }
-    if (u === BigInt(0)) {
-      const g = gcd(v, N);
-      if (g !== BigInt(1)) {
-        failure = g;
-        return null;
-      }
-    }
-    const m = modmul(u, modsub(P1.y, P2.y));
-    const x = modsub(modsub(modmul(m, m), P1.x), P2.x);
-    const y = modsub(modmul(m, modsub(P1.x, x)), P1.y);
-    return {x: x, y: y};
-  };
-  WeierstrassCurve.prototype.doublePoint = function (P, u = undefined) {
-    const v = moddup(P.y);
-    if (u == undefined) {
-      u = invmod(v, N);
-    }
-    if (u === BigInt(0)) {
-      const g = gcd(v, N);
-      if (g !== BigInt(1)) {
-        failure = g;
-        return null;
-      }
-    }
-    const t = modmul(P.x, P.x);
-    const m = modmul(u, modsub(moddup(moddup(t)), modsub(t, this.a)));
-    const x = modsub(modmul(m, m), moddup(P.x));
-    const y = modsub(modmul(m, modsub(P.x, x)), P.y);
-    return {x: x, y: y};
-  };
-  WeierstrassCurve.prototype.negatePoint = function (P) {
-    return {x: P.x, y: modneg(P.y)};
-  };
-  WeierstrassCurve.prototype.arraySize = function () {
-    return 1;
-  };
-  WeierstrassCurve.prototype.phi = function (points, i) {
-    return points.map(P => BigInt(P.x) % N);
-  };
-
-  function WeierstrassCurvesArray(array) {
-    this.array = array;
-  }
-  WeierstrassCurvesArray.prototype.addPoints = function (P1, P2) {
-    const v = new Array(this.array.length);
-    for (let i = 0; i < this.array.length; i += 1) {
-      v[i] = modsub(P1[i].x, P2[i].x);
-    }
-    const u = modInvParallel(v);
-    const res = new Array(this.array.length);
-    for (let i = 0; i < this.array.length; i += 1) {
-      res[i] = this.array[i].addPoints(P1[i], P2[i], u[i]);
-      if (res[i] == null) {
-        return null;
-      }
-    }
-    return res;
-  };
-  WeierstrassCurvesArray.prototype.doublePoint = function (P) {
-    const v = new Array(this.array.length);
-    for (let i = 0; i < this.array.length; i += 1) {
-      v[i] = moddup(P[i].y);
-    }
-    const u = modInvParallel(v);
-    const res = new Array(this.array.length);
-    for (let i = 0; i < this.array.length; i += 1) {
-      res[i] = this.array[i].doublePoint(P[i], u[i]);
-      if (res[i] == null) {
-        return null;
-      }
-    }
-    return res;
-  };
-  WeierstrassCurvesArray.prototype.negatePoint = function (P) {
-    const res = new Array(this.array.length);
-    for (let i = 0; i < this.array.length; i += 1) {
-      res[i] = this.array[i].negatePoint(P[i]);
-    }
-    return res;
-  };
-  WeierstrassCurvesArray.prototype.arraySize = function () {
-    return this.array.length;
-  };
-  WeierstrassCurvesArray.prototype.phi = function (points, index) {
-    return this.array[index].phi(points.map(P => P[index]));
-  };
-
   // https://en.wikipedia.org/wiki/Twisted_Edwards_curve#Addition_in_projective_twisted_curves
   function TwistedEdwardsCurve(a, d) {
     this.a = a;
@@ -320,10 +217,7 @@ function _ecm(N, B = 50000, curveParam = 0) {
   TwistedEdwardsCurve.prototype.negatePoint = function (P) {
     return {x: modneg(P.x), y: P.y, z: P.z, t: modneg(P.t)};
   };
-  TwistedEdwardsCurve.prototype.arraySize = function () {
-    return 1;
-  };
-  TwistedEdwardsCurve.prototype.phi = function (points, i) {
+  TwistedEdwardsCurve.prototype.phi = function (points) {
     const v = new Array(points.length);
     for (let i = 0; i < points.length; i += 1) {
       const P = points[i];
@@ -428,7 +322,7 @@ function _ecm(N, B = 50000, curveParam = 0) {
     let Q = null;
     for (let j = d.length - 1; j >= 0; j -= 1) {
       if (Q != null) {
-        Q = useTwistedEdwardsCurves ? curve.doublePoint(Q, undefined, d[j] !== 0 || j === 0) : curve.doublePoint(Q);
+        Q = curve.doublePoint(Q, undefined, d[j] !== 0 || j === 0);
         if (Q == null) {
           return null;
         }
@@ -487,7 +381,7 @@ function _ecm(N, B = 50000, curveParam = 0) {
     y = y * z0inv % N;
     console.assert((b * y * y - (x * x * x + a * x * x + x)) % N === BigInt(0)); // Montgomery form
 
-    if (useTwistedEdwardsCurves) {
+    if (true) {
       // to make TwistedEdwardsCurve param a smaller:
       // Let a = s**2 * a_0:
       const s = (v - u) * v * invmod(BigInt(2) * u * u, N); // a === (v - u) * (3 * u + v) * invmod(4 * u**4, N) * v**2 * (v - u)**2 mod N;
@@ -498,37 +392,6 @@ function _ecm(N, B = 50000, curveParam = 0) {
         console.assert((b * y * y - (x * x * x + a * x * x + x)) % N === BigInt(0)); // Montgomery form
       }
     }
-
-    return {x: x, y: y, a: a, b: b};
-  };
-
-  const MontgomeryToWeierstrass = function (x, y, a, b, N) {
-    const bInv = BigInt(invmod(b, N));
-    if (bInv === BigInt(0)) {
-      return null;
-    }
-    a = a * bInv % N;
-    b = BigInt(1) * bInv * bInv % N;
-    x = x * bInv % N;
-    y = y * bInv % N;
-    console.assert((y * y - (x * x * x + a * x * x + b * x)) % N === BigInt(0));
-
-    const _3Inv = invmod(BigInt(3), N);
-    if (_3Inv === BigInt(0)) {
-      return null;
-    }
-    const a1 = (BigInt(3) * b - a * a) * _3Inv % N;
-    const b1 = (BigInt(2) * a * a * a - BigInt(9) * a * b) * _3Inv * _3Inv * _3Inv % N;
-    x = (x + a * _3Inv) % N;
-    y = y;
-    a = a1;
-    b = b1;
-    console.assert((y * y - (x * x * x + a * x + b)) % N === BigInt(0)); // Weierstrass form
-
-    x = x < BigInt(0) ? x + N : x;
-    y = y < BigInt(0) ? y + N : y;
-    a = a < BigInt(0) ? a + N : a;
-    b = b < BigInt(0) ? b + N : b;
 
     return {x: x, y: y, a: a, b: b};
   };
@@ -545,43 +408,26 @@ function _ecm(N, B = 50000, curveParam = 0) {
     return p;
   };
 
-  const generateCurveAndStartingPoint = function (curveIndex, parallelCurves) {
-    if (typeof curveIndex !== 'number' || typeof parallelCurves !== 'number') {
+  const generateCurveAndStartingPoint = function (curveIndex, flag = false) {
+    if (typeof curveIndex !== 'number') {
       throw new TypeError();
-    }
-    if (!useTwistedEdwardsCurves && parallelCurves !== 1) {
-      const curvesArray = [];
-      const points = [];
-      while (curvesArray.length < parallelCurves) {
-        const tmp = generateCurveAndStartingPoint(curveIndex + curvesArray.length, 1);
-        curvesArray.push(tmp.curve);
-        points.push(tmp.startingPoint);
-      }
-      return {curve: new WeierstrassCurvesArray(curvesArray), startingPoint: points};
     }
     if (useSuyamaParametrization) {
       const tmp1 = SuyamaParametrization(BigInt(6) + BigInt(curveIndex), N);
       if (tmp1 != null) {
-        if (useTwistedEdwardsCurves) {
+        if (true) {
           const tmp3 = MontgomeryToTwistedEdwards(tmp1.x, tmp1.y, tmp1.a, tmp1.b, N);
           if (tmp3 != null) {
             return {curve: new TwistedEdwardsCurve(tmp3.a, tmp3.d), startingPoint: {x: tmp3.x, y: tmp3.y, z: BigInt(1), t: modmul(tmp3.x, tmp3.y)}};
           }
-        } else {
-          const tmp2 = MontgomeryToWeierstrass(tmp1.x, tmp1.y, tmp1.a, tmp1.b, N);
-          if (tmp2 != null) {
-            return {curve: new WeierstrassCurve(tmp2.a), startingPoint: {x: tmp2.x, y: tmp2.y}};
-          }
         }
       }
     }
-    if (useTwistedEdwardsCurves) {
+    if (true) {
       const d = BigInt(curveIndex + 2);
       const a = d * BigInt(2) * BigInt(2) + BigInt(1) - BigInt(2) * BigInt(2);
       return {curve: new TwistedEdwardsCurve(a, d), startingPoint: {x: BigInt(1), y: BigInt(2), z: BigInt(1), t: BigInt(1) * BigInt(2)}};
     }
-    const a = BigInt(3 + curveIndex);
-    return {curve: new WeierstrassCurve(a), startingPoint: {x: BigInt(0), y: BigInt(1)}};
   };
 
   const restoreNulls = function (values, points) {
@@ -647,8 +493,11 @@ function _ecm(N, B = 50000, curveParam = 0) {
   const B2 = Math.ceil(B * Math.log2(B) * Math.log(B) * 1.5);// !?
 
   if (true) {
-    const tmp = generateCurveAndStartingPoint(curveParam, parallelCurves);
+    const tmp = generateCurveAndStartingPoint(curveParam);
     const curve = tmp.curve;
+    if (curve == null) {
+      return BigInt(0);
+    }
     let P = tmp.startingPoint;
     if (verbose) {
       console.debug('B1: ', B, 'B2: ', B2, 'curveParam: ', curveParam);
@@ -670,7 +519,7 @@ function _ecm(N, B = 50000, curveParam = 0) {
     }
     ecm.modMuls = modMuls;
 
-    if (useTwistedEdwardsCurves && sP != null && sP.z != null) {
+    if (true && sP != null && sP.z != null) {
       let g = BigInt(gcd(sP.x, N));
       let B1 = B;
       while (BigInt(g) === BigInt(N) && B1 >= 2) {
@@ -752,12 +601,12 @@ function _ecm(N, B = 50000, curveParam = 0) {
         }
 
         const primesUpToB2 = useMultipointPolynomialEvaluation ? null : primes(B2);
-        for (let i = 0; i < curve.arraySize(); i += 1) {
+        do {
           if (failure !== BigInt(1)) {
             break;
           }
-          const x1array = restoreNulls(curve.phi(P1array.filter(P => P != null), i), P1array);
-          const x2array = restoreNulls(curve.phi(P2array.filter(P => P != null), i), P2array);
+          const x1array = restoreNulls(curve.phi(P1array.filter(P => P != null)), P1array);
+          const x2array = restoreNulls(curve.phi(P2array.filter(P => P != null)), P2array);
           if (failure !== BigInt(1)) {
             break;
           }
@@ -832,7 +681,7 @@ function _ecm(N, B = 50000, curveParam = 0) {
             }
             //console.debug('count', count);
           }
-        }
+        } while (false);
       }
       if (verbose) {
         console.timeEnd('stage2');
