@@ -5,7 +5,7 @@
 import gcd from './libs/gcd.js';
 
 function primes(MAX) {
-  const sieve = new Uint8Array(MAX + 1).fill(1);
+  const sieve = new Uint8Array(MAX + 1).fill(-1);
   const result = [];
   result.push(2);
   for (let i = 3; i <= MAX; i += 2) {
@@ -154,7 +154,11 @@ function _ecm(N, B = 50000, curveParam = 0) {
     if (typeof a !== 'bigint' || typeof b !== 'bigint') {
       throw new TypeError();
     }
-    return (a * b) % sN;
+    let y = (a * b) % sN;
+    if (y < BigInt(0)) {
+      y += sN;
+    }
+    return y;
   };
 
   const modInvParallel = function (a) {
@@ -188,7 +192,7 @@ function _ecm(N, B = 50000, curveParam = 0) {
     const D = modmul(P1.t, P2.z);
     const E = modadd(D, C);
     const F = modsub(modadd(modmul(modsub(P1.x, P1.y), modadd(P2.x, P2.y)), B), A);
-    const G = modsub(B, modmulsmall(-BigInt(this.a), A));
+    const G = modadd(B, modmulsmall(this.a, A));
     const H = modsub(D, C);
     const x = modmul(E, F);
     const y = modmul(G, H);
@@ -202,7 +206,7 @@ function _ecm(N, B = 50000, curveParam = 0) {
     const B = modmul(A, A);
     const C = modmul(P.x, P.x);
     const D = modmul(P.y, P.y);
-    const E = modneg(modmulsmall(-BigInt(this.a), C));
+    const E = modmulsmall(this.a, C);
     const F = modadd(E, D);
     const H = modmul(P.z, P.z);
     const J = modsub(F, moddup(H));
@@ -600,7 +604,6 @@ function _ecm(N, B = 50000, curveParam = 0) {
           }
         }
 
-        const primesUpToB2 = useMultipointPolynomialEvaluation ? null : primes(B2);
         do {
           if (failure !== BigInt(1)) {
             break;
@@ -649,19 +652,20 @@ function _ecm(N, B = 50000, curveParam = 0) {
           } else {
             let product = BigInt(1);
             let count = 0;
-            for (const p of primesUpToB2) {
+            for (const p of primes(B2)) {
               if (failure !== BigInt(1)) {
                 break;
               }
               if (+p >= +B) {
                 // p = i * d + j
                 const i = Math.round(p / d);
-                const j = p - d * i;
-                if (i !== 0 && j !== 0) {
-                  const x1 = x1array[i];
-                  // only check if point addition fails:
-                  // Note: is is also possible to remove -j or j as x_coordinate(j*P) === x_coordinate(-j*P), this is <20% of cases
-                  const x2 = j < 0 ? x2array[-j] : x2array[j];
+                let j = p - d * i;
+                j = j < 0 ? -j : j;
+                // only check if point addition fails:
+                // Note: is is also possible to remove -j or j as x_coordinate(j*P) === x_coordinate(-j*P), this is <20% of cases
+                const x1 = x1array[i];
+                const x2 = x2array[j];
+                if (x1 != null && x2 != null) {
                   product = modmul(product, modsub(x1, x2));
                   count += 1;
                   if (count % 1024 === 0) {
@@ -679,7 +683,7 @@ function _ecm(N, B = 50000, curveParam = 0) {
                 }
               }
             }
-            //console.debug('count', count);
+            //console.debug('count', count / primes(B2).length, x1array.filter(x => x != null).length * x2array.filter(x => x != null).length / count);
           }
         } while (false);
       }
