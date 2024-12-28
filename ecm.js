@@ -569,7 +569,7 @@ function _ecm(N, B = 50000, curveParam = 0) {
       console.timeEnd('stage1');
     }
     if (verbose) {
-      console.log('modmuls per second: ', (modMuls - modMuls0) * 1000 / (end - start));
+      console.debug('modmuls per second: ', (modMuls - modMuls0) * 1000 / (end - start));
     }
     ecm.modMuls = modMuls;
 
@@ -599,7 +599,7 @@ function _ecm(N, B = 50000, curveParam = 0) {
     if (sP == null) {
       if (failure !== BigInt(1) && failure !== BigInt(N)) {
         if (verbose) {
-          console.log('stage1 success');
+          console.debug('stage1 success');
         }
         return failure;
       }
@@ -743,7 +743,7 @@ function _ecm(N, B = 50000, curveParam = 0) {
       ecm.modMuls = modMuls;
       if (failure !== BigInt(1) && failure !== BigInt(N)) {
         if (verbose) {
-          console.log('stage2 success');
+          console.debug('stage2 success');
         }
         return failure;
       }
