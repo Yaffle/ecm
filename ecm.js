@@ -108,7 +108,7 @@ function makeBarrettReduction(N) {
   const NInv = (BigInt(1) << BigInt(2 * k)) / N;
   const km1 = BigInt(k - 1);
   const kp1 = BigInt(k + 1);
-  const useBarrettReduction = k > 256;//?
+  const useBarrettReduction = k > 128;//?
   return useBarrettReduction ? function (p) {
     let y = p - (((p >> km1) * NInv) >> kp1) * N;
     while (y < BigInt(0)) {

@@ -1,6 +1,6 @@
 {
   "name": "@yaffle/ecm",
-  "version": "0.0.16",
+  "version": "0.0.17",
   "description": "Lenstra elliptic-curve factorization method",
   "main": "ecm.js",
   "type": "module",
