@@ -684,7 +684,7 @@ function _ecm(N, B = 50000, curveParam = 0) {
             for (let j = 0; j < products.length; j += 1) {
               p = modmul(p, products[j]);
             }
-            if (BigInt(gcd(p, N)) !== BigInt(1)) {
+            if (BigInt(gcd(p % N, N)) !== BigInt(1)) {
               for (let j = 0; j < products.length; j += 1) {
                 const product = products[j];
                 const u = BigInt(gcd(product, N));
@@ -719,7 +719,7 @@ function _ecm(N, B = 50000, curveParam = 0) {
                   product = modmul(product, modsub(x1, x2));
                   count += 1;
                   if (count % 1024 === 0) {
-                    const u = BigInt(gcd(product, N));
+                    const u = BigInt(gcd(product % N, N));
                     if (u !== BigInt(1) && u !== BigInt(N)) {
                       failure = u;
                       break;
