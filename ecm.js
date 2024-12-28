@@ -2,7 +2,7 @@
 /*global BigInt*/
 "use strict";
 //TODO:
-import gcd from './libs/gcd.js';
+//import gcd from './libs/gcd.js';
 
 function primes(MAX) {
   const sieve = new Uint8Array(MAX + 1).fill(-1);
@@ -21,8 +21,58 @@ function primes(MAX) {
   return result;
 }
 
+//function invmod(a, m) {
+//  return gcd.invmod(a, m);
+//}
+
+function gcdext(a, b) {
+  if (typeof a !== 'bigint' || typeof b !== 'bigint') {
+    throw new TypeError();
+  }
+  let B = BigInt(0);
+  let D = BigInt(1);
+  let x = a;
+  let y = b;
+  while (y !== BigInt(0)) {
+    const q = BigInt(x / y);
+    const y1 = x - q * y;
+    x = y;
+    y = y1;
+    const D1 = B - q * D;
+    B = D;
+    D = D1;
+  }
+  return [undefined, B, x];
+}
+
 function invmod(a, m) {
-  return gcd.invmod(a, m);
+  if (a < BigInt(0)) {
+    a += m;
+  }
+  if (a < BigInt(0) || a > m) {
+    throw new RangeError();
+  }
+  const [A, B, g] = gcdext(m, a);
+  if (BigInt(g) !== BigInt(1)) {
+    return BigInt(0);
+  }
+  return BigInt(B) < BigInt(0) ? BigInt(B) + BigInt(m) : BigInt(B);
+}
+
+function gcd(a, b) {
+  if (typeof a !== 'bigint' || typeof b !== 'bigint') {
+    throw new TypeError();
+  }
+  if (a < BigInt(0) || a > b) {
+    throw new RangeError();
+  }
+  while (b !== BigInt(0)) {
+    const q = BigInt(a / b);
+    const r = a - q * b;
+    a = b;
+    b = r;
+  }
+  return a;
 }
 
 function ecm(N, unlimited = false) {
@@ -73,7 +123,7 @@ function makeBarrettReduction(N) {
 
 function makeSpecialReduction(N) {
   const k = N.toString(2).length;
-  const NInv = BigInt(invmod(N, BigInt(1) << BigInt(k - 1)));//?
+  const NInv = BigInt(invmod(BigInt.asUintN(k - 1, N), BigInt(1) << BigInt(k - 1)));//?
   const sN = N * NInv;
   const k1 = sN.toString(2).length - 1;
   const bk1 = BigInt(k1);
@@ -369,11 +419,11 @@ function _ecm(N, B = 50000, curveParam = 0) {
     //let sigma = BigInt(6) % N;
     const u = (sigma * sigma - BigInt(5)) % N;
     const v = (BigInt(4) * sigma) % N;
-    const z0inv = invmod(v * v * v, N);
+    const z0inv = invmod(v * v * v % N, N);
     if (z0inv === BigInt(0)) {
       return null;
     }
-    const t = invmod(BigInt(4) * u * u * u * v, N);
+    const t = invmod(BigInt(4) * u * u * u * v % N, N);
     if (t === BigInt(0)) {
       return null;
     }
@@ -388,7 +438,7 @@ function _ecm(N, B = 50000, curveParam = 0) {
     if (true) {
       // to make TwistedEdwardsCurve param a smaller:
       // Let a = s**2 * a_0:
-      const s = (v - u) * v * invmod(BigInt(2) * u * u, N); // a === (v - u) * (3 * u + v) * invmod(4 * u**4, N) * v**2 * (v - u)**2 mod N;
+      const s = (v - u) * v * invmod(BigInt(2) * u * u % N, N) % N; // a === (v - u) * (3 * u + v) * invmod(4 * u**4, N) * v**2 * (v - u)**2 mod N;
       const sInv = invmod(s, N);
       if (sInv !== BigInt(0)) {
         b = b * s * s % N;
@@ -524,7 +574,7 @@ function _ecm(N, B = 50000, curveParam = 0) {
     ecm.modMuls = modMuls;
 
     if (true && sP != null && sP.z != null) {
-      let g = BigInt(gcd(sP.x, N));
+      let g = BigInt(gcd(sP.x % N, N));
       let B1 = B;
       while (BigInt(g) === BigInt(N) && B1 >= 2) {
         //TODO: what to do here?
@@ -537,7 +587,7 @@ function _ecm(N, B = 50000, curveParam = 0) {
         if (sP == null) {// done
           g = BigInt(1);
         } else {
-          g = gcd(sP.x, N);
+          g = gcd(sP.x % N, N);
         }
       }
       if (g > BigInt(1) && g < BigInt(N)) {
