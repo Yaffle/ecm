@@ -85,7 +85,7 @@ function ecm(N, unlimited = false) {
     B1 = Math.floor(B1 / 5);
   }
   for (; B1 <= B; B1 *= 5) {
-    const curves = Math.floor(Math.sqrt(B1)); //TODO: !?
+    const curves = Math.round(Math.sqrt(B1) / 16) * 16; //TODO: !?
     let curveIndex = 0;
     while (curveIndex < curves) {
       console.debug('curves: ', curveIndex + '/' + curves);
@@ -133,7 +133,7 @@ function makeSpecialReduction(N) {
     //const mask = (BigInt(1) << bk1) - BigInt(1);
     return function (p) {
       let y = BigInt.asUintN(k1, p) - (p >> bk1);
-      // (p & mask) is slightly faster somehow then BigInt>sUintN(k1, p):
+      // (p & mask) is slightly faster somehow then BigInt.asUintN(k1, p):
       //let y = (p & mask) - (p >> bk1);
       //y = y % N;
       if (y < BigInt(0)) {
@@ -303,8 +303,9 @@ function _ecm(N, B = 50000, curveParam = 0) {
     }
     let x_e = x_m * BigInt(invmod(y_m, N)) % N;
     let y_e = (x_m - BigInt(1)) * invmod(x_m + BigInt(1), N) % N;
-    let a = (A + BigInt(2)) * invmod(B, N) % N;
-    let d = (A - BigInt(2)) * invmod(B, N) % N;
+    const Binv = invmod(B, N);
+    let a = (A + BigInt(2)) * Binv % N;
+    let d = (A - BigInt(2)) * Binv % N;
     if (x_e == BigInt(0) || y_e === BigInt(0) || a === BigInt(0) || d === BigInt(0)) {
       return null;
     }
@@ -544,7 +545,7 @@ function _ecm(N, B = 50000, curveParam = 0) {
   };
 
   const verbose = true;//TODO: ?
-  const B2 = Math.ceil(B * Math.log2(B) * Math.log(B) * 1.5);// !?
+  const B2 = Math.ceil(B * Math.log2(B) * Math.log(B));// !?
 
   if (true) {
     const tmp = generateCurveAndStartingPoint(curveParam);
