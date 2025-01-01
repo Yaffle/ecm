@@ -46,6 +46,9 @@ function gcdext(a, b) {
 }
 
 function invmod(a, m) {
+  if (typeof a !== 'bigint' || typeof m !== 'bigint') {
+    throw new TypeError();
+  }
   if (a < BigInt(0)) {
     a += m;
   }
@@ -150,6 +153,9 @@ function _ecm(N, B = 50000, curveParam = 0) {
   // from https://trizenx.blogspot.com/2018/10/continued-fraction-factorization-method.html:
   // https://github.com/trizen/sidef-scripts/blob/master/Math/elliptic-curve_factorization_method.sf
   // and Cohen 93
+  if (typeof N !== 'bigint') {
+    throw new TypeError();
+  }
 
   const useSuyamaParametrization = true;
 
@@ -575,7 +581,7 @@ function _ecm(N, B = 50000, curveParam = 0) {
     ecm.modMuls = modMuls;
 
     if (true && sP != null && sP.z != null) {
-      let g = BigInt(gcd(sP.x % N, N));
+      let g = BigInt(gcd(BigInt(sP.x) % BigInt(N), N));
       let B1 = B;
       while (BigInt(g) === BigInt(N) && B1 >= 2) {
         //TODO: what to do here?
@@ -588,7 +594,7 @@ function _ecm(N, B = 50000, curveParam = 0) {
         if (sP == null) {// done
           g = BigInt(1);
         } else {
-          g = gcd(sP.x % N, N);
+          g = gcd(BigInt(sP.x) % BigInt(N), N);
         }
       }
       if (g > BigInt(1) && g < BigInt(N)) {
@@ -685,7 +691,7 @@ function _ecm(N, B = 50000, curveParam = 0) {
             for (let j = 0; j < products.length; j += 1) {
               p = modmul(p, products[j]);
             }
-            if (BigInt(gcd(p % N, N)) !== BigInt(1)) {
+            if (BigInt(gcd(BigInt(p) % BigInt(N), N)) !== BigInt(1)) {
               for (let j = 0; j < products.length; j += 1) {
                 const product = products[j];
                 const u = BigInt(gcd(product, N));
@@ -720,7 +726,7 @@ function _ecm(N, B = 50000, curveParam = 0) {
                   product = modmul(product, modsub(x1, x2));
                   count += 1;
                   if (count % 1024 === 0) {
-                    const u = BigInt(gcd(product % N, N));
+                    const u = BigInt(gcd(BigInt(product) % BigInt(N), N));
                     if (u !== BigInt(1) && u !== BigInt(N)) {
                       failure = u;
                       break;
